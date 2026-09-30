@@ -18,7 +18,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf libtool pkg-config zlib1g-dev libffi-dev libssl-dev openjdk-17-jdk-headless unzip zip
+          sudo apt-get install -y autoconf automake m4 libtool gettext autoconf-archive pkg-config zlib1g-dev libffi-dev libssl-dev openjdk-17-jdk-headless unzip zip
           echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
 
       - name: Cache buildozer (SDK/NDK)
