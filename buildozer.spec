@@ -9,7 +9,7 @@ source.include_exts = py,json
 source.include_patterns = assets/**,*.png,*.json
 version = 0.1
 
-requirements = python3,kivy
+requirements = python3,kivy,pyjnius==1.8.0
 
 orientation = portrait
 fullscreen = 0
