@@ -29,6 +29,7 @@ jobs:
 
       - name: Install buildozer
         run: |
+          python -m pip install "pip<24.1"
           pip install --upgrade buildozer cython
 
       - name: Build debug APK
