@@ -32,6 +32,21 @@ jobs:
           python -m pip install "pip<24.1"
           pip install --upgrade buildozer cython
 
+      - name: Patch p4a for pip 26 android wheel
+        run: |
+          git clone --depth 1 --branch master https://github.com/kivy/python-for-android.git /tmp/p4a_patched
+          python - <<'EOF'
+          p = '/tmp/p4a_patched/pythonforandroid/build.py'
+          s = open(p, encoding='utf-8').read()
+          old = "install -v --target '{0}' --no-deps -r requirements.txt"
+          new = "install -v --target '{0}' --no-deps --platform android_24_arm64_v8a --python-version 3.14 --implementation cp --abi cp314 -r requirements.txt"
+          if old not in s:
+              raise SystemExit('PATTERN NOT FOUND')
+          s = s.replace(old, new)
+          open(p, 'w', encoding='utf-8').write(s)
+          print('p4a patched OK')
+          EOF
+
       - name: Build debug APK
         run: |
           yes | buildozer -v android debug
