@@ -32,6 +32,7 @@ IMPROVE_FILE = os.path.join(BASE, "improve_history.json")
 
 # Android 上 Kivy 默认字体不支持中文，注册系统 CJK 字体避免乱码方框
 if sys.platform == "android":
+    from kivy.config import Config
     for _fp in (
         "/system/fonts/MiSansC_3.005.ttf",
         "/system/fonts/NotoSansCJK-Regular.ttc",
@@ -40,6 +41,12 @@ if sys.platform == "android":
         if os.path.exists(_fp):
             try:
                 LabelBase.register(name="Roboto", fn_regular=_fp)
+                LabelBase.register(name="Roboto-Regular", fn_regular=_fp)
+                try:
+                    Config.set("kivy", "default_font", _fp)
+                    Config.write()
+                except Exception:
+                    pass
                 break
             except Exception:
                 pass
