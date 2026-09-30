@@ -543,8 +543,7 @@ class ForgePage(BoxLayout):
 # ---------------------------------------------------------------- 主应用
 
 class ForgeAutoApp(App):
-    def title(self):
-        return "自动挂机合成"
+    title = "自动挂机合成"
 
     def build(self):
         Clock.schedule_interval(self._pump, 0.2)
