@@ -15,6 +15,7 @@ import diamond_compound_lite as dcl
 
 from kivy.app import App
 from kivy.clock import Clock
+from kivy.core.text import LabelBase
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -28,6 +29,20 @@ from kivy.uix.textinput import TextInput
 
 CRED_FILE = os.path.join(BASE, "mobile_creds.json")
 IMPROVE_FILE = os.path.join(BASE, "improve_history.json")
+
+# Android 上 Kivy 默认字体不支持中文，注册系统 CJK 字体避免乱码方框
+if sys.platform == "android":
+    for _fp in (
+        "/system/fonts/MiSansC_3.005.ttf",
+        "/system/fonts/NotoSansCJK-Regular.ttc",
+        "/system/fonts/DroidSansFallback.ttf",
+    ):
+        if os.path.exists(_fp):
+            try:
+                LabelBase.register(name="Roboto", fn_regular=_fp)
+                break
+            except Exception:
+                pass
 
 _CREDS = {}
 _UI_LOCK = threading.Lock()
