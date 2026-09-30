@@ -17,6 +17,9 @@ fullscreen = 0
 android.permissions = INTERNET
 android.archs = arm64-v8a
 
+# 使用打过补丁的本地 p4a 源码（workflow 中创建，修复 pip 26 拒绝 android wheel）
+p4a.source_dir = /tmp/p4a_patched
+
 [buildozer]
 log_level = 2
 warn_on_root = 1
