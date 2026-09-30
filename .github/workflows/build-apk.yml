@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -18,7 +18,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake m4 libtool gettext autoconf-archive pkg-config zlib1g-dev libffi-dev libssl-dev openjdk-17-jdk-headless unzip zip
+          sudo apt-get install -y autoconf automake libtool m4 pkg-config build-essential libffi-dev liblzma-dev libbz2-dev libreadline-dev libsqlite3-dev zlib1g-dev libssl-dev openjdk-17-jdk-headless unzip zip
           echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
 
       - name: Cache buildozer (SDK/NDK)
