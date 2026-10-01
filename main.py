@@ -276,11 +276,13 @@ class PoolPage(BoxLayout):
                 except Exception:
                     continue
                 ids[wid] += 1
-                if wid not in seen:
+                # 同图鉴只保留价值最高的一把（未重复部分）
+                if wid not in seen or dcl.weapon_price(w) > dcl.weapon_price(seen[wid]):
                     seen[wid] = w
             dup_n = sum(v - 1 for v in ids.values() if v > 1)
             bins = Counter()
-            for w in valid:
+            # 区间分布基于去重后的池（每图鉴保留价值最高那把）
+            for w in seen.values():
                 try:
                     p = int(dcl.weapon_price(w))
                 except Exception:
@@ -310,7 +312,7 @@ class PoolPage(BoxLayout):
         if dist:
             self.dist_box.add_widget(Label(text="价值区间", bold=True, size_hint_y=None, height=dp(20)))
             self.dist_box.add_widget(Label(text="数量", bold=True, size_hint_y=None, height=dp(20)))
-            for lo, c in dist[:12]:
+            for lo, c in dist:
                 hi = lo + 1000
                 self.dist_box.add_widget(Label(text="%d-%d" % (lo, hi), size_hint_y=None, height=dp(20)))
                 self.dist_box.add_widget(Label(text=str(c), size_hint_y=None, height=dp(20)))
@@ -475,24 +477,48 @@ class ForgePage(BoxLayout):
                                 break
                         return got
 
+                # 每轮取一次服务器时间，批间共享（16010 修复：iid 用 +700s 大偏移单调递增）
+                sec = dcl.forge_sec(tok, uid)
+                if sec is None:
+                    sec = int(time.time())
+
+                def _forge_batch(batch_ids):
+                    nonlocal total_req, total_ok, total_fail
+                    if not batch_ids or self.stop_flag.is_set():
+                        return
+                    total_req += 1
+                    rsp = None
+                    # 16010 自适应：逐级扩大 iid 偏移重试（服务器记录过更大历史 iid 时）
+                    # 每级偏移内重试 3 次（并发竞态下 iid 到达顺序乱，用更新的 iid 重发即成功）
+                    for bias in (700001, 2100001, 6300001, 18900001):
+                        if self.stop_flag.is_set():
+                            return
+                        for _a in range(3):
+                            if self.stop_flag.is_set():
+                                return
+                            iid_pair = dcl.forge_iid_mono(sec, bias=bias)
+                            try:
+                                rsp, body = dcl.batch_forge(tok, uid, batch_ids, template, iid_pair=iid_pair, timeout=6)
+                            except Exception as e:
+                                rsp = {"code": -1, "msg": str(e)}
+                            c = rsp.get("code") if isinstance(rsp, dict) else rsp
+                            if isinstance(rsp, dict) and c == 0:
+                                total_ok += 1
+                                return
+                            if not (isinstance(rsp, dict) and c == 16010):
+                                break
+                        if isinstance(rsp, dict) and rsp.get("code") == 0:
+                            return
+                    total_fail += 1
+                    self.app.ui("打造未成功: %s" % (c,))
+
                 for bi in range(p["max_batch"]):
                     if self.stop_flag.is_set():
                         break
                     picked_ids = []
                     if p["mode"] == 0:
                         def _one(_i):
-                            nonlocal total_req, total_ok, total_fail
-                            batch_ids = [w.get("weapon_id") for w in _pick_lowest(20)]
-                            if not batch_ids:
-                                return
-                            total_req += 1
-                            rsp, body = dcl.batch_forge(tok, uid, batch_ids, template, timeout=6)
-                            c = rsp.get("code") if isinstance(rsp, dict) else rsp
-                            if isinstance(rsp, dict) and rsp.get("code") == 0:
-                                total_ok += 1
-                            else:
-                                total_fail += 1
-                                self.app.ui("打造未成功: %s" % (c,))
+                            _forge_batch([w.get("weapon_id") for w in _pick_lowest(20)])
 
                         ths = []
                         nw = min(p["workers"], max(1, len(forge_pool_all) // 20))
@@ -511,14 +537,7 @@ class ForgePage(BoxLayout):
                         for _k in range(20):
                             if self.stop_flag.is_set():
                                 break
-                            total_req += 1
-                            rsp, body = dcl.batch_forge(tok, uid, [wid], template, timeout=6)
-                            c = rsp.get("code") if isinstance(rsp, dict) else rsp
-                            if isinstance(rsp, dict) and rsp.get("code") == 0:
-                                total_ok += 1
-                            else:
-                                total_fail += 1
-                                self.app.ui("打造未成功: %s" % (c,))
+                            _forge_batch([wid])
                     if self.stop_flag.is_set():
                         break
                 cost = time.time() - t0
