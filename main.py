@@ -612,7 +612,7 @@ class ForgeAutoApp(App):
 
     def build(self):
         Clock.schedule_interval(self._pump, 0.2)
-        tp = TabbedPanel(tab_width=dp(120))
+        tp = TabbedPanel(tab_width=dp(120), do_default_tab=False)
         self.cred_page = CredPage(self)
         self.pool_page = PoolPage(self)
         self.forge_page = ForgePage(self)
