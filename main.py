@@ -216,7 +216,9 @@ class CredPage(BoxLayout):
             if not ws:
                 self.app.ui("测试失败: %s" % (resp,))
             else:
-                self.app.ui("测试成功: 拉取 %d 把武器" % len(ws))
+                _CREDS[uid] = tok
+                _save_creds()
+                self.app.ui("测试成功: 拉取 %d 把武器（凭证已自动保存）" % len(ws))
         except Exception as e:
             self.app.ui("测试异常: %s" % e)
 
@@ -234,6 +236,9 @@ class PoolPage(BoxLayout):
         self.lbl = Label(text="未拉取", size_hint_y=None, height=dp(30), halign="left")
         self.add_widget(row)
         self.add_widget(self.lbl)
+        self.dist_box = GridLayout(cols=2, size_hint_y=None, spacing=dp(2))
+        self.dist_box.bind(minimum_height=self.dist_box.setter("height"))
+        self.add_widget(self.dist_box)
         head = GridLayout(cols=4, size_hint_y=None, height=dp(26), spacing=dp(4))
         for t in ("武器名称", "价值", "品质", "数量"):
             head.add_widget(Label(text=t, bold=True, halign="center"))
@@ -254,23 +259,34 @@ class PoolPage(BoxLayout):
 
     def _do(self, uid, tok):
         try:
-            ws, resp = dcl.fetch_forge_pool(tok, uid, timeout=20)
-            if not ws:
+            resp = dcl.api_post(tok, dcl.DEFAULT_WEAPON_API, {"uid": uid}, timeout=20)
+            if not isinstance(resp, dict) or resp.get("code") != 0:
                 self.app.ui("拉取失败: %s" % (resp,))
                 return
-            raw = len(ws)
+            raw_list = (resp.get("data") or {}).get("weapons") or []
+            if not isinstance(raw_list, list):
+                raw_list = []
+            valid = [w for w in raw_list if dcl.is_usable_weapon(w)]
+            from collections import Counter
+            ids = Counter()
             seen = {}
-            dups = 0
-            for w in ws:
+            for w in raw_list:
                 try:
                     wid = int(w.get("weapon_id", 0) or 0)
                 except Exception:
                     continue
-                if wid in seen:
-                    dups += 1
-                else:
+                ids[wid] += 1
+                if wid not in seen:
                     seen[wid] = w
-            self.app.ui("武器池: 原始 %d 条 → 有效 %d 把，重复 %d 条" % (raw, len(seen), dups))
+            dup_n = sum(v - 1 for v in ids.values() if v > 1)
+            bins = Counter()
+            for w in valid:
+                try:
+                    p = int(dcl.weapon_price(w))
+                except Exception:
+                    continue
+                bins[(p // 1000) * 1000] += 1
+            dist = sorted(bins.items())
             rows = []
             for wid, w in seen.items():
                 try:
@@ -281,16 +297,25 @@ class PoolPage(BoxLayout):
                     q = int(w.get("quality", 0) or 0)
                 except Exception:
                     q = 0
-                rows.append((dcl.get_weapon_name(wid), price, q, 1))
+                rows.append((dcl.get_weapon_name(wid), price, q, ids[wid]))
             rows.sort(key=lambda x: -x[1])
-            self.app.ui_clock(lambda: self._fill(rows, len(seen), dups, raw))
+            self.app.ui("武器池: 原始 %d 条 → 有效 %d 把，重复 %d 条" % (len(raw_list), len(valid), dup_n))
+            self.app.ui_clock(lambda: self._fill(rows, len(valid), dup_n, len(raw_list), dist))
         except Exception as e:
             self.app.ui("拉取异常: %s" % e)
 
-    def _fill(self, rows, valid, dups, raw):
+    def _fill(self, rows, valid, dups, raw, dist):
         self.lbl.text = "原始 %d 条 → 有效 %d 把，重复 %d 条" % (raw, valid, dups)
+        self.dist_box.clear_widgets()
+        if dist:
+            self.dist_box.add_widget(Label(text="价值区间", bold=True, size_hint_y=None, height=dp(20)))
+            self.dist_box.add_widget(Label(text="数量", bold=True, size_hint_y=None, height=dp(20)))
+            for lo, c in dist[:12]:
+                hi = lo + 1000
+                self.dist_box.add_widget(Label(text="%d-%d" % (lo, hi), size_hint_y=None, height=dp(20)))
+                self.dist_box.add_widget(Label(text=str(c), size_hint_y=None, height=dp(20)))
         self.box.clear_widgets()
-        for name, price, q, cnt in rows[:200]:
+        for name, price, q, cnt in rows:
             self.box.add_widget(Label(text=name, halign="left", size_hint_y=None, height=dp(24)))
             self.box.add_widget(Label(text="{:,}".format(price), halign="center", size_hint_y=None, height=dp(24)))
             self.box.add_widget(Label(text=str(q), halign="center", size_hint_y=None, height=dp(24)))
@@ -307,29 +332,29 @@ class ForgePage(BoxLayout):
         self.app = app
         self.stop_flag = threading.Event()
 
-        g = GridLayout(cols=2, size_hint_y=None, height=dp(250), spacing=dp(6))
+        g = GridLayout(cols=2, size_hint_y=None, height=dp(340), spacing=dp(8))
         g.add_widget(Label(text="打造方式", halign="left"))
-        self.sp_mode = Spinner(text="最低20把/批", values=("最低20把/批", "单把×20次"))
+        self.sp_mode = Spinner(text="最低20把/批", values=("最低20把/批", "单把×20次"), font_size=dp(16))
         g.add_widget(self.sp_mode)
         g.add_widget(Label(text="每轮最大批数", halign="left"))
-        self.tx_batch = TextInput(text="50", multiline=False)
+        self.tx_batch = TextInput(text="50", multiline=False, font_size=dp(16))
         g.add_widget(self.tx_batch)
         g.add_widget(Label(text="轮数（0=无限）", halign="left"))
-        self.tx_rounds = TextInput(text="0", multiline=False)
+        self.tx_rounds = TextInput(text="0", multiline=False, font_size=dp(16))
         g.add_widget(self.tx_rounds)
         g.add_widget(Label(text="并发路数", halign="left"))
-        self.tx_workers = TextInput(text="5", multiline=False)
+        self.tx_workers = TextInput(text="5", multiline=False, font_size=dp(16))
         g.add_widget(self.tx_workers)
         g.add_widget(Label(text="阈值合成", halign="left"))
-        row = BoxLayout(spacing=dp(4))
-        self.cb_compound = CheckBox(active=True)
+        row = BoxLayout(spacing=dp(6), size_hint_y=None, height=dp(52))
+        self.cb_compound = CheckBox(active=True, size_hint_x=0.18)
         row.add_widget(self.cb_compound)
-        row.add_widget(Label(text="阈值 >", halign="left"))
-        self.tx_thr = TextInput(text="52000", multiline=False, size_hint_x=0.5)
+        row.add_widget(Label(text="阈值 >", halign="left", size_hint_x=0.18))
+        self.tx_thr = TextInput(text="52000", multiline=False, size_hint_x=0.34, font_size=dp(16))
         row.add_widget(self.tx_thr)
-        row.add_widget(Label(text="最多", halign="left"))
-        self.tx_cmax = TextInput(text="5", multiline=False, size_hint_x=0.5)
-        row.add_widget(Label(text="次", halign="left"))
+        row.add_widget(Label(text="最多", halign="left", size_hint_x=0.14))
+        self.tx_cmax = TextInput(text="5", multiline=False, size_hint_x=0.2, font_size=dp(16))
+        row.add_widget(Label(text="次", halign="left", size_hint_x=0.1))
         g.add_widget(row)
         self.add_widget(g)
 
@@ -578,6 +603,14 @@ class ForgeAutoApp(App):
         return tp
 
     def creds(self):
+        # 优先凭证页输入框当前值（即使用户忘记点保存也能用最新 UID/token）
+        try:
+            _uid = self.cred_page.tx_uid.text.strip()
+            _tok = self.cred_page.tx_token.text.strip()
+            if _uid and _tok:
+                return _uid, _tok
+        except Exception:
+            pass
         _load_creds()
         for uid, tok in _CREDS.items():
             return uid, tok
